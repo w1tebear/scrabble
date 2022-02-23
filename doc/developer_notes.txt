@@ -1,0 +1,7 @@
+Problems:
+    When I initially tried to run the app, and in fact sample apps, in Tomcat, 
+    the browser got a 404 when it tried to access the endpoint. To fix this:
+    - Ensure the maven websocket dependency matches the ws version associated
+      with the Tomcat version (https://tomcat.apache.org/whichversion.html).
+    - Set <scope>provided</scope> in the maven dep.
+
