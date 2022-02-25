@@ -32,100 +32,98 @@ import jakarta.websocket.server.ServerEndpoint;
 
 @ServerEndpoint("/wsendpoint")
 public class WebSocketServer {
-	private static final Logger log = LogManager.getLogger(WebSocketServer.class);
-	private static final String GUEST_PREFIX = "Guest";
-	private static final AtomicInteger connectionIds = new AtomicInteger(0);
-	private static final Set<WebSocketServer> connections = new CopyOnWriteArraySet<>();
-	private Game game = null;
-	private String name;
+    private static final AtomicInteger connectionIds = new AtomicInteger(0);
+    private static final Set<WebSocketServer> connections = new CopyOnWriteArraySet<>();
     private static Gson gson = new Gson();
+    private static final String GUEST_PREFIX = "Guest";
+    private static final Logger log = LogManager.getLogger(WebSocketServer.class);
 
-	private static void broadcast(String msg) {
-		log.traceEntry();
-		for (WebSocketServer client : connections) {
-			try {
-				synchronized (client) {
-					client.session.getBasicRemote().sendText(msg);
-				}
-			} catch (IOException e) {
-				log.debug("Chat Error: Failed to send message to client", e);
-				connections.remove(client);
-				try {
-					client.session.close();
-				} catch (IOException e1) {
-					// Ignore
-				}
-				String message = String.format("* %s %s", client.nickname, "has been disconnected.");
-				broadcast(message);
-			}
-		}
-	}
+    private static void broadcast(String msg) {
+        log.traceEntry();
+        for (WebSocketServer client : connections) {
+            try {
+                synchronized (client) {
+                    client.session.getBasicRemote().sendText(msg);
+                }
+            } catch (IOException e) {
+                log.debug("Chat Error: Failed to send message to client", e);
+                connections.remove(client);
+                try {
+                    client.session.close();
+                } catch (IOException e1) {
+                    // Ignore
+                }
+                String message = String.format("* %s %s", client.nickname, "has been disconnected.");
+                broadcast(message);
+            }
+        }
+    }
 
-	private final String nickname;
+    private Game game = null;
+    private String nickname;
+    private Session session;
 
-	private Session session;
+    public WebSocketServer() {
+        log.traceEntry();
+        nickname = GUEST_PREFIX + connectionIds.getAndIncrement();
+    }
 
-	public WebSocketServer() {
-		log.traceEntry();
-		nickname = GUEST_PREFIX + connectionIds.getAndIncrement();
-	}
+    @OnClose
+    public void end() {
+        log.traceEntry();
+        connections.remove(this);
+        String message = String.format("* %s %s", nickname, "has disconnected.");
+        sendOutgoingMsg(new OutgoingMsgBean(message));
+    }
 
-	@OnClose
-	public void end() {
-		log.traceEntry();
-		connections.remove(this);
-		String message = String.format("* %s %s", nickname, "has disconnected.");
-		sendOutgoingMsg(new OutgoingMsgBean(message));
-	}
-
-	@OnMessage
-	public void incoming(String message) {
-		log.traceEntry("message: {}", message);
-		IncomingMsgBean imb = gson.fromJson(message, IncomingMsgBean.class);
+    @OnMessage
+    public void incoming(String message) {
+        log.traceEntry("message: {}", message);
+        IncomingMsgBean imb = gson.fromJson(message, IncomingMsgBean.class);
         Action action = imb.getAction();
-		if (action == null) {
-		    sendOutgoingMsg(new OutgoingMsgBean("* unable to perform action - no action supplied"));
-		}
-		
-		try {
+        if (action == null) {
+            sendOutgoingMsg(new OutgoingMsgBean("* unable to perform action - no action supplied"));
+        }
+
+        try {
+            Map<String, String> props = imb.getPayload();
             if (action.equals(Action.INIT)) {
                 game = new ScrabbleGame();
-                Map<String,String> props = imb.getPayload();
                 if (props.containsKey("name")) {
-                    this.name = props.get("name");
+                    this.nickname = props.get("name");
                 }
                 game.init(this, props);
-                
+
             } else if (action.equals(Action.CHAT)) {
-                if (game != null) {
-                    name = game.get
+                if (props.containsKey("message")) {
+                    String filteredMessage = String.format("%s: %s", nickname, props.get("message").toString());
+                    sendOutgoingMsg(new OutgoingMsgBean(filteredMessage));
                 }
             }
         } catch (GameInputException e) {
             sendOutgoingMsg(new OutgoingMsgBean("* error - " + e.getMessage()));
         }
-		sendOutgoingMsg(new OutgoingMsgBean("* action " + action.toString() + " complete"));
-		// Never trust the client
-//		String filteredMessage = String.format("%s: %s", nickname, message.toString());
-//		sendOutgoingMsg(new OutgoingMsgBean(filteredMessage));
-	}
-	public void sendOutgoingMsg(OutgoingMsgBean msgBean) {
-	    String msg = gson.toJson(msgBean);
-	    broadcast(msg);
-	}
+        sendOutgoingMsg(new OutgoingMsgBean("* action " + action.toString() + " complete"));
 
-	@OnError
-	public void onError(Throwable t) throws Throwable {
-		log.traceEntry();
-		log.error("Chat Error: " + t.toString(), t);
-	}
+    }
 
-	@OnOpen
-	public void start(Session session) {
-		log.traceEntry();
-		this.session = session;
-		connections.add(this);
-		String message = String.format("* %s %s", nickname, "has joined.");
-		sendOutgoingMsg(new OutgoingMsgBean(message));
-	}
+    @OnError
+    public void onError(Throwable t) throws Throwable {
+        log.traceEntry();
+        log.error("Chat Error: " + t.toString(), t);
+    }
+
+    public void sendOutgoingMsg(OutgoingMsgBean msgBean) {
+        String msg = gson.toJson(msgBean);
+        broadcast(msg);
+    }
+
+    @OnOpen
+    public void start(Session session) {
+        log.traceEntry();
+        this.session = session;
+        connections.add(this);
+        String message = String.format("* %s %s", nickname, "has joined.");
+        sendOutgoingMsg(new OutgoingMsgBean(message));
+    }
 }

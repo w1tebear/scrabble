@@ -3,73 +3,116 @@
  */
 "use strict";
 
-var Chat = {};
+var ws = (function() {
+    var socket;
+    const sendQueue = [];
+    const socketState = { CONNECTING: 0, OPEN: 1, CLOSING: 2, CLOSED: 3 };
+    var messageHandlers;
 
-Chat.socket = null;
+    function connect(host) {
+        main.debug("Connecting...");
+        if ('WebSocket' in window) {
+            socket = new WebSocket(host);
+        } else if ('MozWebSocket' in window) {
+            socket = new MozWebSocket(host);
+        } else {
+            alert('Error: WebSockets are not supported by this browser.');
+            return;
+        }
 
-Chat.connect = (function(host) {
-    if ('WebSocket' in window) {
-        Chat.socket = new WebSocket(host);
-    } else if ('MozWebSocket' in window) {
-        Chat.socket = new MozWebSocket(host);
-    } else {
-        ChatPane.log('Error: WebSocket is not supported by this browser.');
-        return;
-    }
+        socket.onopen = function() {
+            main.debug("in onopen");
+            sendQueueToServer();
+            // chatPane.init(ws);
+        };
 
-    Chat.socket.onopen = function() {
-        ChatPane.log('Info: WebSocket connection opened.');
-        document.getElementById('chatInput').onkeydown = function(event) {
-            if (event.keyCode == 13) {
-                Chat.sendMessage();
+        socket.onclose = function() {
+            main.debug("In onclose");
+            main.statusMsg('Info: Connection to server closed.');
+        };
+
+        socket.onmessage = function(message) {
+            main.debug("in onmessage:");
+            main.debug(message);
+            /* 'msg' is the JSON version of the java bean OutgoingMsgBean */
+            let msg = JSON.parse(message.data);
+            let action = msg.action;
+            if (action) {
+                let handlerFunc = messageHandlers[action];
+                if (handlerFunc) {
+                    handlerFunc(msg);
+                } else {
+                    main.warn('Ignoring message - no messageHandler for action ' + action);
+                }
+            } else {
+                main.warn('Ignoring message - no action found: ' + msg);
             }
         };
+    }
+
+    /* 
+     * action = CHAT|INIT|JOIN
+     * payload = an object with attributes appropriate for the action - see the java game definition.
+     */
+    function crOutgoingMessage(action, payload) {
+        return { action: action, payload: payload };
+    }
+
+    function init() {
+        if (window.location.protocol == 'http:') {
+            connect('ws://' + window.location.host + '/scrabble/wsendpoint');
+        } else {
+            connect('wss://' + window.location.host + '/scrabble/wsendpoint');
+        }
+    }
+
+    /*
+     * outgoingMessage is of type returned by ws.crOutgoingMessage
+     */
+    function sendOutgoingMessage(outgoingMessage) {
+        sendQueue.push(outgoingMessage);
+
+        if (socket == null) {
+            ws.init(); // will also result in call to socket.onopen()
+        } else {
+            if (socket.readyState == socketState.OPEN) {
+                sendQueueToServer();
+            } else if (socket.readyState != socketState.CONNECTING) {
+                // if CONNECTING the sendQueue will be sent in socket.onopen()
+                ws.init(); // will also result in call to socket.onopen()
+            }
+        }
+    }
+
+    function sendQueueToServer() {
+        let outgoingMsg = sendQueue.shift();
+        while (outgoingMsg != undefined) {
+            socket.send(JSON.stringify(outgoingMsg));
+            outgoingMsg = sendQueue.shift();
+        }
+    }
+
+    /*
+     * messageHandlers - an object whose keys are 'actions' as defined for the Java class
+     * OutgoingMsgBean, and whose values are functions that should expect a single value,
+     * that being the object created by parsing the JSON message.
+     */
+    function setMessageHandlers(newMessageHandlers) {
+        messageHandlers = newMessageHandlers;
+    }
+
+    return {
+        crOutgoingMessage: crOutgoingMessage,
+        init: init,
+        sendOutgoingMessage: sendOutgoingMessage,
+        setMessageHandlers: setMessageHandlers
     };
 
-    Chat.socket.onclose = function() {
-        document.getElementById('chatInput').onkeydown = null;
-        ChatPane.log('Info: WebSocket closed.');
-    };
+})();
 
-    Chat.socket.onmessage = function(message) {
-        /* 'msg' is the JSON version of the java bean OutgoingMsgBean */
-        var msg = JSON.parse(message.data);
-        if (msg.chatMessage) {
-            ChatPane.log(msg.chatMessage);
-        } 
-    };
-});
 
-Chat.initialize = function() {
-    if (window.location.protocol == 'http:') {
-        Chat.connect('ws://' + window.location.host + '/scrabble/wsendpoint');
-    } else {
-        Chat.connect('wss://' + window.location.host + '/scrabble/wsendpoint');
-    }
-};
 
-Chat.sendMessage = (function() {
-    var message = document.getElementById('chatInput').value;
-    if (message != '') {
-        Chat.socket.send(message);
-        document.getElementById('chatInput').value = '';
-    }
-});
 
-var ChatPane = {};
 
-ChatPane.log = (function(message) {
-    var chatPane = document.getElementById('chatPane');
-    var p = document.createElement('p');
-    p.style.wordWrap = 'break-word';
-    p.innerHTML = message;
-    chatPane.appendChild(p);
-    while (chatPane.childNodes.length > 25) {
-        chatPane.removeChild(chatPane.firstChild);
-    }
-    chatPane.scrollTop = chatPane.scrollHeight;
-});
-
-Chat.initialize();
 
 

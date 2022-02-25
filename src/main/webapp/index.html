@@ -4,19 +4,21 @@
 <meta charset="utf-8">
 <title>Scrabble</title>
 <link href="css/scrabble.css" rel="stylesheet">
+<script src="js/chatPane.js"></script>
 <script src="js/ws.js"></script>
+<script src="js/game.js"></script>
+<script src="js/main.js"></script>
 
 </head>
-<body>
+<body onload="main.init();">
 	<header>
 		<h1>Scrabble</h1>
 		<h2>The funnest game!</h2>
 	</header>
-	<nav>
-		<ul>
-			<li>New Game</li>
-		</ul>
-	</nav>
+	<div id="buttons">
+		<button id="new_game">New Game</button>
+		<button id="join_game">Join Game</button>
+	</div>
 	<main>
 		<section id="tiles">
 			<h1>My Tiles</h1>
