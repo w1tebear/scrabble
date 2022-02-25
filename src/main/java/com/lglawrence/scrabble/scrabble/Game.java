@@ -1,38 +1,28 @@
 /**
- * 
+ * Game.java
  */
 package com.lglawrence.scrabble.scrabble;
 
-import java.util.HashSet;
-import java.util.Set;
-import java.util.UUID;
+import java.util.Map;
+
+import com.lglawrence.scrabble.comms.WebSocketServer;
 
 /**
- * @author lgl
- *
+ * Interface all games must implement.
  */
-public class Game {
-
+public interface Game {
     public static enum Action {
-        INIT, START, END, PLAY
+        CHAT, END, INIT, MAKE_PLAY, START
     }
 
-    Set<Player> players = new HashSet<>();
-    TilePile tilePile = new TilePile();
-    Board board = new Board();
-    private boolean begun = false;
-    private String id = UUID.randomUUID().toString();
-
-    public Game() {
-
-    }
-
-    public void start() {
-        begun = true;
-    }
-
-    public void addPlayer(Player player) {
-        this.players.add(player);
-    }
+    /**
+     * Initialize the game. The game will not actually start until start() is
+     * called.
+     * 
+     * @param ws    the WebSocketServer to which all communications should be sent.
+     * @param props the properties appropriate to initialize the game.
+     * @throws GameInputException should the properties be lacking.
+     */
+    public void init(WebSocketServer ws, Map<String, String> props) throws GameInputException;
 
 }

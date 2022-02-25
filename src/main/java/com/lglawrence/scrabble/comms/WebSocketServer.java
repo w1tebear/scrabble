@@ -9,6 +9,7 @@ package com.lglawrence.scrabble.comms;
  */
 
 import java.io.IOException;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -17,7 +18,10 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import com.google.gson.Gson;
-import com.lglawrence.scrabble.util.HTMLString;
+import com.lglawrence.scrabble.scrabble.Game;
+import com.lglawrence.scrabble.scrabble.Game.Action;
+import com.lglawrence.scrabble.scrabble.GameInputException;
+import com.lglawrence.scrabble.scrabble.ScrabbleGame;
 
 import jakarta.websocket.OnClose;
 import jakarta.websocket.OnError;
@@ -32,6 +36,9 @@ public class WebSocketServer {
 	private static final String GUEST_PREFIX = "Guest";
 	private static final AtomicInteger connectionIds = new AtomicInteger(0);
 	private static final Set<WebSocketServer> connections = new CopyOnWriteArraySet<>();
+	private Game game = null;
+	private String name;
+    private static Gson gson = new Gson();
 
 	private static void broadcast(String msg) {
 		log.traceEntry();
@@ -60,7 +67,6 @@ public class WebSocketServer {
 
 	public WebSocketServer() {
 		log.traceEntry();
-		log.warn("STarting!!!");
 		nickname = GUEST_PREFIX + connectionIds.getAndIncrement();
 	}
 
@@ -75,12 +81,35 @@ public class WebSocketServer {
 	@OnMessage
 	public void incoming(String message) {
 		log.traceEntry("message: {}", message);
+		IncomingMsgBean imb = gson.fromJson(message, IncomingMsgBean.class);
+        Action action = imb.getAction();
+		if (action == null) {
+		    sendOutgoingMsg(new OutgoingMsgBean("* unable to perform action - no action supplied"));
+		}
+		
+		try {
+            if (action.equals(Action.INIT)) {
+                game = new ScrabbleGame();
+                Map<String,String> props = imb.getPayload();
+                if (props.containsKey("name")) {
+                    this.name = props.get("name");
+                }
+                game.init(this, props);
+                
+            } else if (action.equals(Action.CHAT)) {
+                if (game != null) {
+                    name = game.get
+                }
+            }
+        } catch (GameInputException e) {
+            sendOutgoingMsg(new OutgoingMsgBean("* error - " + e.getMessage()));
+        }
+		sendOutgoingMsg(new OutgoingMsgBean("* action " + action.toString() + " complete"));
 		// Never trust the client
-		String filteredMessage = String.format("%s: %s", nickname, HTMLString.encodeHtml(message.toString()));
-		sendOutgoingMsg(new OutgoingMsgBean(filteredMessage));
+//		String filteredMessage = String.format("%s: %s", nickname, message.toString());
+//		sendOutgoingMsg(new OutgoingMsgBean(filteredMessage));
 	}
 	public void sendOutgoingMsg(OutgoingMsgBean msgBean) {
-	    Gson gson = new Gson();
 	    String msg = gson.toJson(msgBean);
 	    broadcast(msg);
 	}
